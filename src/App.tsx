@@ -8,9 +8,19 @@ import { FilterBar } from '@/components/FilterBar';
 import { MessageCard } from '@/components/MessageCard';
 import { AddMessageForm } from '@/components/AddMessageForm';
 import { PrivacyNotice, PrivacyFooter } from '@/components/PrivacyNotice';
+import { AndroidConnectionPanel } from '@/components/AndroidConnectionPanel';
 
 type CategoryFilter = Category | 'all';
 type PriorityFilter = Priority | 'all';
+
+const KNOWN_ANDROID_APPS = [
+  { packageName: 'com.whatsapp', label: 'WhatsApp' },
+  { packageName: 'com.instagram.android', label: 'Instagram' },
+  { packageName: 'com.google.android.gm', label: 'Gmail' },
+  { packageName: 'edu.university.campusconnect', label: 'College App' },
+  { packageName: 'com.discord', label: 'Discord' },
+  { packageName: 'com.slack', label: 'Slack' },
+];
 
 function App() {
   const {
@@ -24,6 +34,9 @@ function App() {
     clearAll,
     settings,
     dismissPrivacy,
+    setAndroidConnected,
+    setListenerEnabled,
+    toggleAppExclusion,
   } = useMessages();
 
   const [search, setSearch] = useState('');
@@ -43,7 +56,6 @@ function App() {
     });
   }, [messages, activeCategory, activePriority, search]);
 
-  // Top messages for dashboard highlights
   const highPriorityMessages = useMemo(
     () => messages.filter(m => m.priority === 'high' && !m.completed).slice(0, 3),
     [messages],
@@ -59,17 +71,25 @@ function App() {
     [messages],
   );
 
+  const androidNotificationCount = useMemo(
+    () => messages.filter(m => m.origin === 'android').length,
+    [messages],
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Header
         onResetDemo={resetToDemo}
         onClearAll={clearAll}
         messageCount={messages.length}
+        androidConnected={settings.androidConnected}
       />
 
       <main className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
         {/* Privacy notice */}
-        {!settings.dismissedPrivacy && <PrivacyNotice onDismiss={dismissPrivacy} />}
+        {!settings.dismissedPrivacy && (
+          <PrivacyNotice onDismiss={dismissPrivacy} androidConnected={settings.androidConnected} />
+        )}
 
         {/* Stats dashboard */}
         <StatsBar
@@ -77,6 +97,15 @@ function App() {
           completed={stats.completed}
           byCategory={stats.byCategory}
           byPriority={stats.byPriority}
+        />
+
+        {/* Android connection panel */}
+        <AndroidConnectionPanel
+          settings={settings}
+          onConnectChange={setAndroidConnected}
+          onListenerToggle={setListenerEnabled}
+          onToggleExclusion={toggleAppExclusion}
+          detectedApps={KNOWN_ANDROID_APPS}
         />
 
         {/* Dashboard highlights */}

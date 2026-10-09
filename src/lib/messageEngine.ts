@@ -1,16 +1,4 @@
-import type { Category, Priority, Message } from '@/types';
-
-const STOP_WORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-  'should', 'may', 'might', 'must', 'can', 'shall', 'to', 'of', 'in',
-  'on', 'at', 'by', 'for', 'with', 'about', 'from', 'as', 'into', 'your',
-  'you', 'we', 'our', 'us', 'i', 'me', 'my', 'it', 'its', 'this', 'that',
-  'these', 'those', 'and', 'or', 'but', 'not', 'no', 'so', 'if', 'then',
-  'than', 'too', 'very', 'just', 'also', 'only', 'up', 'out', 'over',
-  'please', 'let', 'know', 'hey', 'hi', 'hello', 'bring', 'come', 'want',
-  'think', 'need', 'like', 'get', 'got', 'go', 'going', 'one', 'two',
-]);
+import type { Category, Priority, Message, MessageOrigin } from '@/types';
 
 const URGENCY_WORDS = [
   'urgent', 'immediately', 'asap', 'overdue', 'critical', 'emergency',
@@ -23,7 +11,7 @@ const TASK_WORDS = [
   'project', 'presentation', 'quiz', 'exam', 'test', 'midterm', 'final',
   'paper', 'draft', 'complete', 'finish', 'turn in', 'upload', 'dropbox',
   'apply', 'application', 'register', 'sign up', 'signup', 'enroll',
-  'return', 'pay', 'payment', 'fine', 'submit', 'due',
+  'return', 'pay', 'payment', 'fine', 'due',
 ];
 
 const MEETING_WORDS = [
@@ -40,10 +28,16 @@ const IMPORTANT_WORDS = [
   'response needed', 'action required',
 ];
 
+const FINANCIAL_WORDS = ['fine', 'fee', 'penalty', 'charge', 'overdue', 'payment', 'tuition', 'bill'];
+const SOCIAL_WORDS = ['hey', 'lol', 'haha', 'cool', 'nice', 'fun', 'party', 'movie', 'game', 'weekend', 'chill', 'down for'];
+const ACTION_REQUIRED_WORDS = ['please', 'must', 'need to', 'required', 'mandatory', 'confirm', 'respond', 'reply', 'rsvp', 'vote'];
+const REPLY_EXPECTED_WORDS = ['?', 'what do you think', 'let me know', 'reply', 'response', 'rsvp', 'vote', 'confirm'];
+
 interface DateExtraction {
   deadline: string | null;
   urgencyHours: number | null;
   hasImminentDeadline: boolean;
+  hasDeadline: boolean;
 }
 
 function extractDates(text: string): DateExtraction {
@@ -52,8 +46,8 @@ function extractDates(text: string): DateExtraction {
   let deadline: string | null = null;
   let urgencyHours: number | null = null;
   let hasImminentDeadline = false;
+  let hasDeadline = false;
 
-  // Time patterns
   const timePatterns: Array<{ regex: RegExp; hours: number; label: string }> = [
     { regex: /\btonight\b/i, hours: 8, label: 'tonight' },
     { regex: /\btomorrow\b/i, hours: 24, label: 'tomorrow' },
@@ -74,30 +68,22 @@ function extractDates(text: string): DateExtraction {
     if (p.regex.test(lower)) {
       urgencyHours = urgencyHours === null ? p.hours : Math.min(urgencyHours, p.hours);
       deadline = deadline || p.label;
+      hasDeadline = true;
       if (p.hours <= 24) hasImminentDeadline = true;
       break;
     }
   }
 
-  // "at X PM/AM" time extraction
   const atTimeMatch = lower.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
   if (atTimeMatch) {
     const hour = parseInt(atTimeMatch[1]);
     const minute = atTimeMatch[2] ? parseInt(atTimeMatch[2]) : 0;
     const period = atTimeMatch[3];
-    let adjustedHour = hour;
-    if (period === 'pm' && hour !== 12) adjustedHour += 12;
-    if (period === 'am' && hour === 12) adjustedHour = 0;
     if (deadline) {
       deadline += ` at ${hour}:${minute.toString().padStart(2, '0')} ${period.toUpperCase()}`;
     }
-    // If today and time is close, flag urgent
-    if (!urgencyHours || urgencyHours >= 24) {
-      // keep existing
-    }
   }
 
-  // "due in X days/hours"
   const dueInMatch = lower.match(/\bdue\s+in\s+(\d+)\s*(day|hour|week)s?\b/);
   if (dueInMatch) {
     const num = parseInt(dueInMatch[1]);
@@ -108,20 +94,21 @@ function extractDates(text: string): DateExtraction {
     else hours = num * 168;
     urgencyHours = urgencyHours === null ? hours : Math.min(urgencyHours, hours);
     deadline = deadline || `in ${num} ${unit}${num > 1 ? 's' : ''}`;
+    hasDeadline = true;
     if (hours <= 24) hasImminentDeadline = true;
   }
 
-  // "due tonight" / "due today"
   if (/\bdue\s+(tonight|today|tomorrow)\b/i.test(lower)) {
     hasImminentDeadline = true;
+    hasDeadline = true;
     urgencyHours = urgencyHours === null ? 12 : Math.min(urgencyHours, 12);
     deadline = deadline || 'today';
   }
 
-  // "by Friday" / "by [day]"
   const byDayMatch = lower.match(/\bby\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tonight|tomorrow|end of (?:day|week))\b/i);
   if (byDayMatch) {
     const dayLabel = byDayMatch[1];
+    hasDeadline = true;
     if (dayLabel === 'tonight') {
       hasImminentDeadline = true;
       urgencyHours = urgencyHours === null ? 8 : Math.min(urgencyHours, 8);
@@ -132,11 +119,10 @@ function extractDates(text: string): DateExtraction {
     }
   }
 
-  // "November 15" style dates
   const monthDateMatch = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?\b/);
   if (monthDateMatch) {
     deadline = deadline || `${monthDateMatch[1]} ${monthDateMatch[2]}`;
-    // Try to compute rough hours
+    hasDeadline = true;
     const monthName = monthDateMatch[1];
     const dayNum = parseInt(monthDateMatch[2]);
     const year = now.getFullYear();
@@ -150,22 +136,22 @@ function extractDates(text: string): DateExtraction {
     }
   }
 
-  // "X days late" / "overdue by X days"
   const lateMatch = lower.match(/\b(\d+)\s+days?\s+(?:late|overdue)\b/);
   if (lateMatch) {
     hasImminentDeadline = true;
+    hasDeadline = true;
     urgencyHours = 0;
     deadline = 'overdue';
   }
 
-  // "overdue" alone
   if (/\boverdue\b/i.test(lower)) {
     hasImminentDeadline = true;
+    hasDeadline = true;
     urgencyHours = 0;
     deadline = 'overdue';
   }
 
-  return { deadline, urgencyHours, hasImminentDeadline };
+  return { deadline, urgencyHours, hasImminentDeadline, hasDeadline };
 }
 
 function getMonthIndex(month: string): number {
@@ -185,41 +171,46 @@ function countMatches(text: string, words: string[]): number {
   return count;
 }
 
+function hasAny(text: string, words: string[]): boolean {
+  const lower = text.toLowerCase();
+  return words.some(w => {
+    const regex = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    return regex.test(lower);
+  });
+}
+
 export function categorize(text: string): Category {
   const lower = text.toLowerCase();
-  const { hasImminentDeadline } = extractDates(text);
+  const { hasImminentDeadline, hasDeadline } = extractDates(text);
 
   const urgencyScore = countMatches(lower, URGENCY_WORDS);
   const taskScore = countMatches(lower, TASK_WORDS);
   const meetingScore = countMatches(lower, MEETING_WORDS);
   const importantScore = countMatches(lower, IMPORTANT_WORDS);
 
-  // Urgent: explicit urgency words or overdue/imminent
-  if (urgencyScore >= 1 || hasImminentDeadline) {
-    // If it's about a meeting/event AND not truly urgent (no "urgent", "overdue", "deadline")
-    if (urgencyScore >= 2) return 'urgent';
-    if (/\b(urgent|overdue|immediately|emergency|critical|final notice|warning)\b/i.test(lower)) {
-      return 'urgent';
-    }
-    if (/\bdeadline\b/i.test(lower) && taskScore >= 1) return 'urgent';
-    if (hasImminentDeadline && (urgencyScore >= 1 || /\bdeadline|due\b/i.test(lower))) {
-      return 'urgent';
-    }
+  // Urgent: multiple urgency words, explicit urgent language, or imminent deadlines with task context
+  if (urgencyScore >= 2) return 'urgent';
+  if (hasAny(lower, ['urgent', 'overdue', 'immediately', 'emergency', 'critical', 'final notice'])) {
+    return 'urgent';
+  }
+  if (hasImminentDeadline && (urgencyScore >= 1 || hasDeadline || taskScore >= 1)) {
+    return 'urgent';
   }
 
-  // Tasks & Deadlines
+  // Tasks & Deadlines: assignments, submissions, payments with deadlines
   if (taskScore >= 2) return 'tasks';
-  if (taskScore >= 1 && /\b(due|submit|deadline|complete|finish|return|pay)\b/i.test(lower)) {
+  if (taskScore >= 1 && hasDeadline) return 'tasks';
+  if (taskScore >= 1 && hasAny(lower, ['due', 'submit', 'deadline', 'complete', 'finish', 'return', 'pay'])) {
     return 'tasks';
   }
 
-  // Meetings & Reminders
+  // Meetings & Reminders: scheduled events, gatherings
   if (meetingScore >= 2) return 'meetings';
-  if (meetingScore >= 1 && /\b(at|room|where|location|meet)\b/i.test(lower)) {
+  if (meetingScore >= 1 && hasAny(lower, ['at', 'room', 'where', 'location', 'meet'])) {
     return 'meetings';
   }
 
-  // Important Messages
+  // Important Messages: schedule changes, announcements requiring attention
   if (importantScore >= 1) return 'important';
 
   // Default
@@ -231,53 +222,105 @@ export function prioritize(
   category: Category,
 ): { priority: Priority; reason: string } {
   const lower = text.toLowerCase();
-  const { urgencyHours, hasImminentDeadline } = extractDates(text);
+  const { urgencyHours, hasImminentDeadline, hasDeadline } = extractDates(text);
   const urgencyScore = countMatches(lower, URGENCY_WORDS);
+  const taskScore = countMatches(lower, TASK_WORDS);
+  const hasFinancial = hasAny(lower, FINANCIAL_WORDS) && /\b(\d+%|\$[\d,]+|\d+\s*dollars?)\b/i.test(lower);
+  const hasActionRequired = hasAny(lower, ACTION_REQUIRED_WORDS);
+  const hasSocialContext = countMatches(lower, SOCIAL_WORDS) >= 2;
+  const hasReplyExpected = hasAny(lower, REPLY_EXPECTED_WORDS);
+  const isVeryShort = text.trim().length < 80;
 
-  const reasons: string[] = [];
-
-  // High priority conditions
-  if (urgencyScore >= 2) {
-    reasons.push('multiple urgent indicators in the message');
-  }
-  if (urgencyHours !== null && urgencyHours <= 0) {
-    reasons.push('the deadline has already passed');
-  } else if (urgencyHours !== null && urgencyHours <= 24) {
-    reasons.push('the deadline is within 24 hours');
-  } else if (urgencyHours !== null && urgencyHours <= 48) {
-    reasons.push('the deadline is within 2 days');
-  }
-  if (category === 'urgent') {
-    reasons.push('this message is classified as urgent');
-  }
-  if (/\b(fine|fee|penalty|lose|losing)\b/i.test(lower) && /\b(\d+%|\$[\d,]+)\b/i.test(lower)) {
-    reasons.push('there are financial consequences mentioned');
-  }
-
-  if (reasons.length >= 1) {
-    return { priority: 'high', reason: capitalize(reasons[0]) + (reasons.length > 1 ? `, and ${reasons.slice(1).join(', ')}` : '') };
-  }
-
-  // Medium priority conditions
+  const highReasons: string[] = [];
   const medReasons: string[] = [];
-  if (urgencyHours !== null && urgencyHours <= 168) {
+
+  // --- HIGH PRIORITY ---
+  // Overdue
+  if (urgencyHours !== null && urgencyHours <= 0) {
+    highReasons.push('the deadline has already passed');
+  }
+
+  // Imminent deadline (within 24h) with real task context
+  if (urgencyHours !== null && urgencyHours > 0 && urgencyHours <= 24) {
+    if (urgencyScore >= 1 || taskScore >= 1 || hasDeadline) {
+      highReasons.push('the deadline is within 24 hours');
+    } else if (hasImminentDeadline) {
+      highReasons.push('this is time-sensitive with an imminent deadline');
+    }
+  }
+
+  // Multiple urgency indicators
+  if (urgencyScore >= 2) {
+    highReasons.push('multiple urgency indicators in the message');
+  }
+
+  // Financial consequences with a deadline
+  if (hasFinancial && (hasDeadline || urgencyHours !== null && urgencyHours <= 168)) {
+    highReasons.push('there are financial consequences with an approaching deadline');
+  }
+
+  // Category urgent with real urgency context (not just the word "urgent" alone)
+  if (category === 'urgent' && (hasImminentDeadline || urgencyScore >= 2 || hasFinancial)) {
+    if (highReasons.length === 0) {
+      highReasons.push('this message is classified as urgent based on its overall context');
+    }
+  }
+
+  if (highReasons.length >= 1) {
+    return { priority: 'high', reason: capitalize(highReasons[0]) + (highReasons.length > 1 ? `, and ${highReasons.slice(1).join(', ')}` : '') };
+  }
+
+  // --- MEDIUM PRIORITY ---
+  // Deadline within a week
+  if (urgencyHours !== null && urgencyHours > 24 && urgencyHours <= 168) {
     medReasons.push('the deadline is within a week');
   }
+
+  // Task or assignment without imminent deadline
   if (category === 'tasks') {
     medReasons.push('this is a task or deadline that needs attention');
   }
+
+  // Meeting or event
   if (category === 'meetings') {
-    medReasons.push('this is a meeting or event you should attend');
+    if (hasDeadline) {
+      medReasons.push('this is a meeting or event with a scheduled time');
+    } else {
+      medReasons.push('this is a meeting or event you should attend');
+    }
   }
+
+  // Important updates (schedule changes, announcements)
   if (category === 'important') {
-    medReasons.push('this message contains important updates');
+    medReasons.push('this message contains an important update or schedule change');
   }
-  if (/\b(required|mandatory|must|should|recommend)\b/i.test(lower)) {
-    medReasons.push('an action or response may be expected');
+
+  // Action required but no deadline urgency
+  if (hasActionRequired && !hasImminentDeadline) {
+    medReasons.push('an action or response is expected from you');
+  }
+
+  // Reply expected (questions, RSVP, votes)
+  if (hasReplyExpected && !hasSocialContext) {
+    medReasons.push('the sender is expecting a reply or confirmation');
+  }
+
+  // Explicit "important" word but without other urgency signals — still medium, not high
+  if (urgencyScore === 1 && !hasImminentDeadline && !hasFinancial) {
+    medReasons.push('the message mentions urgency but lacks an imminent deadline');
   }
 
   if (medReasons.length >= 1) {
     return { priority: 'medium', reason: capitalize(medReasons[0]) };
+  }
+
+  // --- LOW PRIORITY ---
+  // Social/casual messages, very short messages with no action items
+  if (hasSocialContext || (isVeryShort && !hasActionRequired && !hasDeadline)) {
+    return {
+      priority: 'low',
+      reason: 'This appears to be a casual or social message with no deadlines or required actions',
+    };
   }
 
   return {
@@ -291,10 +334,8 @@ function capitalize(s: string): string {
 }
 
 function extractActionItems(text: string): string[] {
-  const lower = text.toLowerCase();
   const items: string[] = [];
 
-  // "Please [verb]" patterns
   const pleaseMatch = text.match(/please\s+([^.!]+)[.!]/gi);
   if (pleaseMatch) {
     for (const m of pleaseMatch.slice(0, 2)) {
@@ -302,7 +343,6 @@ function extractActionItems(text: string): string[] {
     }
   }
 
-  // "You need to" / "You must" / "You should"
   const needMatch = text.match(/(?:you\s+)?(?:need to|must|should|have to)\s+([^.!]+)/gi);
   if (needMatch) {
     for (const m of needMatch.slice(0, 2)) {
@@ -311,7 +351,6 @@ function extractActionItems(text: string): string[] {
     }
   }
 
-  // "Bring X" / "Upload X" / "Submit X" / "Return X" / "Pay X" / "Contact X" / "Register X" / "Apply"
   const actionVerbs = ['bring', 'upload', 'submit', 'return', 'pay', 'contact', 'register', 'apply', 'sign up', 'enroll', 'complete', 'finish', 'review', 'vote'];
   for (const verb of actionVerbs) {
     const regex = new RegExp(`\\b${verb}\\s+([^.!]+)`, 'i');
@@ -324,58 +363,50 @@ function extractActionItems(text: string): string[] {
     }
   }
 
-  // Dedupe and limit
   return items.slice(0, 3).map(i => i.charAt(0).toUpperCase() + i.slice(1));
 }
 
 export function summarize(text: string): string {
-  // Extract the most important sentences
   const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 10);
 
   if (sentences.length === 0) return text.trim().slice(0, 200);
+  if (sentences.length === 1) return sentences[0].slice(0, 200);
 
-  if (sentences.length === 1) {
-    return sentences[0].slice(0, 200);
-  }
-
-  // Score sentences by presence of key information
   const keyWords = [...URGENCY_WORDS, ...TASK_WORDS, ...IMPORTANT_WORDS, 'due', 'deadline', 'room', 'at', 'by', 'fee', 'fine'];
-  const scored = sentences.map(s => {
+  const scored = sentences.map((s, i) => {
     let score = 0;
     const lower = s.toLowerCase();
     for (const kw of keyWords) {
       if (lower.includes(kw)) score += 1;
     }
-    // Prefer shorter sentences slightly
     if (s.length < 120) score += 1;
-    // First sentence gets slight boost (often contains the main point)
-    return { sentence: s, score, index: sentences.indexOf(s) };
+    return { sentence: s, score, index: i };
   });
 
-  // Pick top 1-2 sentences
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return a.index - b.index;
   });
 
   const topSentences = scored.filter(s => s.score > 0).slice(0, 2);
-  if (topSentences.length === 0) {
-    // Fall back to first sentence
-    return sentences[0].slice(0, 200);
-  }
+  if (topSentences.length === 0) return sentences[0].slice(0, 200);
 
-  // Re-sort by original order
   topSentences.sort((a, b) => a.index - b.index);
   return topSentences.map(s => s.sentence).join('. ').slice(0, 300) + '.';
 }
 
-export function processMessage(
-  source: string,
-  title: string,
-  body: string,
-  timestamp: number,
-  isDemo: boolean,
-): Message {
+interface ProcessParams {
+  source: string;
+  title: string;
+  body: string;
+  timestamp: number;
+  origin: MessageOrigin;
+  packageName?: string | null;
+  notificationId?: number | null;
+}
+
+export function processMessage(params: ProcessParams): Message {
+  const { source, title, body, timestamp, origin, packageName = null, notificationId = null } = params;
   const fullText = `${title} ${body}`;
   const category = categorize(fullText);
   const { priority, reason } = prioritize(fullText, category);
@@ -396,6 +427,10 @@ export function processMessage(
     actionItems,
     deadline,
     completed: false,
-    isDemo,
+    isDemo: origin === 'demo',
+    origin,
+    packageName,
+    appIcon: null,
+    notificationId,
   };
 }

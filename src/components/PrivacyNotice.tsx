@@ -1,10 +1,11 @@
-import { ShieldCheck, X, Info } from 'lucide-react';
+import { ShieldCheck, X, Info, Smartphone } from 'lucide-react';
 
 interface Props {
   onDismiss: () => void;
+  androidConnected: boolean;
 }
 
-export function PrivacyNotice({ onDismiss }: Props) {
+export function PrivacyNotice({ onDismiss, androidConnected }: Props) {
   return (
     <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -14,12 +15,21 @@ export function PrivacyNotice({ onDismiss }: Props) {
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-slate-800">How MissedMate works</h3>
           <p className="mt-1 text-sm leading-relaxed text-slate-600">
-            MissedMate processes messages <strong>you enter</strong> — it categorizes,
-            prioritizes, and summarizes them using local text analysis on your device.
-            It does <strong>not</strong> automatically read notifications from WhatsApp,
-            Instagram, Gmail, or other apps. A web app cannot access those notifications
-            without platform-specific integrations. Paste anything you want organized
-            and we'll handle the rest.
+            MissedMate categorizes, prioritizes, and summarizes notifications using
+            local text analysis on your device. {androidConnected ? (
+              <strong>You've connected an Android device</strong>
+            ) : (
+              <>You can <strong>connect an Android device</strong> to automatically capture
+              notifications from apps like WhatsApp, Gmail, and Instagram, or <strong>paste
+              messages manually</strong> in the web dashboard.</>
+            )} All processing happens locally — no notification content is ever sent to an
+            external server.
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            <Smartphone size={11} className="mr-1 inline" />
+            Android notification access reads only what's visible in notifications (source app,
+            title, text, and time). It cannot read complete conversations or hidden messages.
+            You can exclude apps or disable access at any time.
           </p>
         </div>
         <button
@@ -38,9 +48,11 @@ export function PrivacyFooter() {
     <div className="mt-8 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
       <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
       <p>
-        MissedMate analyzes text locally in your browser — no data is sent to external
-        servers. It does not connect to WhatsApp, Instagram, Gmail, or any notification
-        system. All processing uses simple text rules, not AI APIs.
+        MissedMate processes notifications locally — no data is sent to external servers.
+        Android notification access reads only the information exposed in notifications
+        (source app, title, text, received time), not complete conversations or hidden messages.
+        You can exclude specific apps, disable notification access, or delete all data at any time.
+        All categorization, prioritization, and summarization uses local text rules, not paid AI APIs.
       </p>
     </div>
   );

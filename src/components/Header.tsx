@@ -1,12 +1,13 @@
-import { Bell, RotateCcw, Trash } from 'lucide-react';
+import { Bell, RotateCcw, Trash, Smartphone } from 'lucide-react';
 
 interface Props {
   onResetDemo: () => void;
   onClearAll: () => void;
   messageCount: number;
+  androidConnected: boolean;
 }
 
-export function Header({ onResetDemo, onClearAll, messageCount }: Props) {
+export function Header({ onResetDemo, onClearAll, messageCount, androidConnected }: Props) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
@@ -21,6 +22,13 @@ export function Header({ onResetDemo, onClearAll, messageCount }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          {androidConnected && (
+            <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-600">
+              <Smartphone size={12} />
+              <span className="hidden sm:inline">Android connected</span>
+              <span className="sm:hidden">Connected</span>
+            </span>
+          )}
           {messageCount > 0 && (
             <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 sm:inline">
               {messageCount} {messageCount === 1 ? 'message' : 'messages'}

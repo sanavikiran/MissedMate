@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Trash2, Check, Clock,
   AlertTriangle, CalendarClock, Users, MessageSquare, Coffee, Sparkles,
+  Smartphone, Type,
 } from 'lucide-react';
 import type { Message, Category, Priority } from '@/types';
 import { CATEGORY_CONFIG, PRIORITY_CONFIG, formatRelativeTime } from '@/lib/uiConfig';
@@ -27,6 +28,8 @@ export function MessageCard({ message, onToggleComplete, onDelete, onPriorityCha
   const catConfig = CATEGORY_CONFIG[message.category];
   const priConfig = PRIORITY_CONFIG[message.priority];
   const CatIcon = CATEGORY_ICONS[message.category];
+  const isFromAndroid = message.origin === 'android';
+  const OriginIcon = isFromAndroid ? Smartphone : message.origin === 'demo' ? Sparkles : Type;
 
   return (
     <article
@@ -45,10 +48,16 @@ export function MessageCard({ message, onToggleComplete, onDelete, onPriorityCha
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${priConfig.bg} ${priConfig.text} ${priConfig.border} border`}>
               {priConfig.label}
             </span>
-            {message.isDemo && (
+            {message.origin === 'demo' && (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                 <Sparkles size={10} />
                 Demo
+              </span>
+            )}
+            {isFromAndroid && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-600">
+                <Smartphone size={10} />
+                Android
               </span>
             )}
             {message.deadline && (
@@ -61,7 +70,10 @@ export function MessageCard({ message, onToggleComplete, onDelete, onPriorityCha
           <h3 className={`text-sm font-semibold text-slate-900 ${message.completed ? 'line-through' : ''}`}>
             {message.title}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-400">{message.source}</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <OriginIcon size={11} className="text-slate-300" />
+            <p className="text-xs text-slate-400">{message.source}</p>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -89,7 +101,7 @@ export function MessageCard({ message, onToggleComplete, onDelete, onPriorityCha
       <div className="mt-3 rounded-lg bg-slate-50 p-3">
         <div className="mb-1 flex items-center gap-1.5">
           <Sparkles size={12} className="text-violet-500" />
-          <span className="text-xs font-semibold text-slate-500">AI Summary</span>
+          <span className="text-xs font-semibold text-slate-500">Summary</span>
         </div>
         <p className="text-sm leading-relaxed text-slate-700">{message.summary}</p>
       </div>
@@ -137,6 +149,12 @@ export function MessageCard({ message, onToggleComplete, onDelete, onPriorityCha
         <div className="mt-3 border-t border-slate-100 pt-3">
           <p className="mb-1 text-xs font-semibold text-slate-400">Full message</p>
           <p className="text-sm leading-relaxed text-slate-600 whitespace-pre-wrap">{message.body}</p>
+          {isFromAndroid && message.packageName && (
+            <p className="mt-2 text-xs text-slate-300">
+              Package: {message.packageName}
+              {message.notificationId !== null && ` · Notification ID: ${message.notificationId}`}
+            </p>
+          )}
         </div>
       )}
     </article>
